@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Base Ping</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#0f172a; color:#fff; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0 }
+      .card { background:rgba(255,255,255,.06); padding:24px; border-radius:16px; width: min(92vw, 520px); box-shadow: 0 15px 40px rgba(0,0,0,.3) }
+      .row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:10px 0 }
+      .btn { background:rgba(255,255,255,.10); border:none; padding:10px 14px; border-radius:12px; color:#fff; cursor:pointer }
+      .btn:disabled { opacity:.5; cursor:not-allowed }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all }
+      small { opacity:.7 }
+      a { color:#a5b4fc }
+    </style>
+    <!-- Ethers v5 UMD (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  </head>
+  <body>
+    <div class="card">
+      <h2 style="margin:0 0 6px">Base Ping</h2>
+      <p style="margin:0 0 16px"><strong>Ping</strong> butonuna tıkla → cüzdan onayı → kontrattaki <code>ping()</code> çağrılır. Her cüzdan 1 kez.</p>
+
+      <div class="row">
+        <div>
+          <div><small>Bağlı cüzdan</small></div>
+          <div id="account" class="mono">—</div>
+        </div>
+        <button id="connect" class="btn">Cüzdanı Bağla</button>
+      </div>
+
+      <div style="margin:12px 0">
+        <div><small>Kontrat</small></div>
+        <div id="contractAddr" class="mono"></div>
+      </div>
+
+      <div class="row">
+        <button id="ping" class="btn" disabled>Ping</button>
+        <div><small id="counter">—</small></div>
+      </div>
+
+      <div>
+        <small>Durum: <span id="status">Hazır</span></small><br/>
+        <small>Tx: <a id="tx" href="#" target="_blank" rel="noreferrer">—</a></small>
+      </div>
+    </div>
+
+    <script type="text/javascript">
+      (function() {
+        const CONTRACT_ADDRESS = "0x88b04a6ce778b3eab658a6f5692a4714a60eb136"; // senin adresin
+        const CHAIN_ID_HEX = "0x2105"; // 8453 Base Mainnet
+        const accountEl = document.getElementById("account");
+        const statusEl = document.getElementById("status");
+        const txEl = document.getElementById("tx");
+        const counterEl = document.getElementById("counter");
+        const connectBtn = document.getElementById("connect");
+        const pingBtn = document.getElementById("ping");
+        const contractAddrEl = document.getElementById("contractAddr");
+        contractAddrEl.textContent = CONTRACT_ADDRESS;
+
+        const ABI = [
+          {"inputs":[],"name":"ping","outputs":[],"stateMutability":"nonpayable","type":"function"},
+          {"inputs":[],"name":"uniquePings","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+          {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"count","type":"uint256"}],"name":"Ping","type":"event"}
+        ];
+
+        let provider, signer, contract;
+
+        async function ensureBaseNetwork() {
+          const eth = window.ethereum;
+          const chainId = await eth.request({ method: "eth_chainId" });
+          if (chainId !== CHAIN_ID_HEX) {
+            // Base’i ekle/ana ağa geç
+            await eth.request({
+              method: "wallet_switchEthereumChain",
+              params: [{ chainId: CHAIN_ID_HEX }],
+            }).catch(async (err) => {
+              if (err.code === 4902) {
+                await eth.request({
+                  method: "wallet_addEthereumChain",
+                  params: [{
+                    chainId: CHAIN_ID_HEX,
+                    chainName: "Base Mainnet",
+                    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+                    rpcUrls: ["https://mainnet.base.org"],
+                    blockExplorerUrls: ["https://basescan.org/"],
+                  }],
+                });
+              } else {
+                throw err;
+              }
+            });
+          }
+        }
+
+        async function connect() {
+          if (!window.ethereum) {
+            alert("Lütfen MetaMask (veya bir EVM cüzdanı) kur.");
+            return;
+          }
+          statusEl.textContent = "Cüzdan bağlantısı bekleniyor…";
+          const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+          accountEl.textContent = accounts[0];
+          provider = new ethers.providers.Web3Provider(window.ethereum);
+          signer = provider.getSigner();
+          await ensureBaseNetwork();
+          contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+          pingBtn.disabled = false;
+          statusEl.textContent = "Bağlandı.";
+          refreshCounter().catch(()=>{});
+        }
+
+        async function refreshCounter() {
+          if (!provider) {
+            const rp = new ethers.providers.JsonRpcProvider("https://mainnet.base.org");
+            const rc = new ethers.Contract(CONTRACT_ADDRESS, ABI, rp);
+            const v = await rc.uniquePings();
+            counterEl.textContent = v.toString() + " unique pings";
+          } else {
+            const v = await contract.uniquePings();
+            counterEl.textContent = v.toString() + " unique pings";
+          }
+        }
+
+        async function ping() {
+          try {
+            statusEl.textContent = "İşlem gönderiliyor… Cüzdandan onayla.";
+            const tx = await contract.ping();
+            txEl.textContent = tx.hash;
+            txEl.href = `https://basescan.org/tx/${tx.hash}`;
+            statusEl.textContent = "Onay bekleniyor…";
+            await tx.wait();
+            statusEl.textContent = "Onaylandı! Teşekkürler.";
+            await refreshCounter();
+          } catch (e) {
+            console.error(e);
+            statusEl.textContent = e?.data?.message || e?.message || "İşlem reddedildi/başarısız.";
+          }
+        }
+
+        connectBtn.addEventListener("click", connect);
+        pingBtn.addEventListener("click", ping);
+        // sayfa açılınca sayaç oku (read-only)
+        refreshCounter().catch(()=>{});
+      })();
+    </script>
+  </body>
+</html>
