@@ -20,7 +20,7 @@
   <body>
     <div class="card">
       <h2 style="margin:0 0 6px">Base Ping</h2>
-      <p style="margin:0 0 16px"><strong>Ping</strong> butonuna tıkla → cüzdan onayı → kontrattaki <code>ping()</code> çağrılır. Her cüzdan 1 kez.</p>
+      <p style="margin:0 0 16px"><strong>Cüzdan bağla ve Ping</strong> butonuna tıkla → cüzdan onayı → kontrattaki <code>ping()</code> çağrılır. Her cüzdan 1 kez.</p>
 
       <div class="row">
         <div>
@@ -62,6 +62,7 @@
         const ABI = [
           {"inputs":[],"name":"ping","outputs":[],"stateMutability":"nonpayable","type":"function"},
           {"inputs":[],"name":"uniquePings","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+          {"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"hasPinged","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
           {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"count","type":"uint256"}],"name":"Ping","type":"event"}
         ];
 
@@ -94,6 +95,30 @@
           }
         }
 
+        async function afterConnectSetup() {
+          // mevcut
+          await ensureBaseNetwork();
+          contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+          await refreshCounter();
+        
+          // YENİ: hasPinged kontrolü
+          const me = await signer.getAddress();
+          const already = await contract.hasPinged(me);
+          if (already) {
+            pingBtn.disabled = true;
+            statusEl.textContent = "Bu cüzdan zaten ping attı ✅";
+          } else {
+            pingBtn.disabled = false;
+            statusEl.textContent = "Bağlandı. Ping atabilirsin.";
+          }
+        
+          // ağ/hesap değişimlerini dinle
+          if (window.ethereum) {
+            window.ethereum.on("accountsChanged", () => connect()); 
+            window.ethereum.on("chainChanged", () => location.reload());
+          }
+        }
+
         async function connect() {
           if (!window.ethereum) {
             alert("Lütfen MetaMask (veya bir EVM cüzdanı) kur.");
@@ -109,6 +134,7 @@
           pingBtn.disabled = false;
           statusEl.textContent = "Bağlandı.";
           refreshCounter().catch(()=>{});
+          await afterConnectSetup();
         }
 
         async function refreshCounter() {
@@ -134,8 +160,13 @@
             statusEl.textContent = "Onaylandı! Teşekkürler.";
             await refreshCounter();
           } catch (e) {
-            console.error(e);
-            statusEl.textContent = e?.data?.message || e?.message || "İşlem reddedildi/başarısız.";
+            const msg = (e?.data?.message || e?.message || "").toLowerCase();
+            if (msg.includes("already pinged")) {
+              statusEl.textContent = "Bu cüzdan zaten ping attı ✅";
+              pingBtn.disabled = true;
+            } else {
+              statusEl.textContent = "İşlem reddedildi/başarısız: " + (e?.data?.message || e?.message || "Bilinmeyen hata");
+            }
           }
         }
 
