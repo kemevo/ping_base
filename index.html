@@ -267,8 +267,29 @@
             let simOk = true;
             try {
               await contract.callStatic.ping({ from: me });
-            } catch {
+            } catch (simErr) {
               simOk = false;
+              
+              // Önce ağ kontrolü yap - belki yanlış ağdadır
+              const currentChain = await window.ethereum.request({ method: "eth_chainId" });
+              if (currentChain !== CHAIN_ID_HEX) {
+                diagEl.textContent = "Teşhis: Yanlış ağdasın (ETH veya başka). Base Mainnet'e geçmen gerekiyor.";
+                statusEl.textContent = "Yanlış ağdasın! Base'e geçmek ister misin?";
+                
+                try {
+                  await requireBaseNetworkInteractive();
+                  // Ağ değişti, kontratı yeniden bağla ve ping'i tekrar dene
+                  contract = new ethers.Contract(currentAddress, ABI, signer);
+                  statusEl.textContent = "Base'e geçildi. Şimdi tekrar ping atabilirsin.";
+                  diagEl.textContent = "";
+                  return;
+                } catch (netErr) {
+                  statusEl.textContent = netErr.message || "Base ağına geçmeden ping atılamaz.";
+                  return;
+                }
+              }
+              
+              // Base'deyse ama yine de revert ediyorsa
               diagEl.textContent = "Teşhis: Simülasyon revert etti. Olası neden: tek sefer kuralı, onlyOwner/whitelist veya başka koşul.";
               if (!force) {
                 statusEl.textContent = "Kontrat bu çağrıyı bu hesapla reddediyor.";
