@@ -232,14 +232,13 @@
           try {
             if (!contract || !signer) { statusEl.textContent = "Önce cüzdan bağla."; return; }
 
-            const me = await signer.getAddress();
             diagEl.textContent = "";
 
-            // ÖNCE ağ kontrolü yap - yoksa simülasyon yanlış ağda çalışır
+            // İLK ÖNCE ağ kontrolü yap - yoksa her şey yanlış ağda çalışır
             const currentChain = await window.ethereum.request({ method: "eth_chainId" });
             if (currentChain !== CHAIN_ID_HEX) {
-              diagEl.textContent = "Teşhis: Yanlış ağdasın (Ethereum Mainnet veya başka ağ). Base Mainnet'e geçmen gerekiyor.";
-              statusEl.textContent = "❌ Yanlış ağdasın! Base Mainnet'e geçelim mi?";
+              diagEl.textContent = "⚠️ Yanlış ağdasın! Şu anda: " + currentChain + " | Gerekli: Base Mainnet (0x2105)";
+              statusEl.textContent = "❌ ETH veya başka ağdasın! Base'e geçelim mi?";
               
               try {
                 await requireBaseNetworkInteractive();
@@ -247,7 +246,7 @@
                 provider = new ethers.providers.Web3Provider(window.ethereum);
                 signer = provider.getSigner();
                 contract = new ethers.Contract(currentAddress, ABI, signer);
-                statusEl.textContent = "✅ Base'e geçildi. Şimdi tekrar ping atabilirsin.";
+                statusEl.textContent = "✅ Base'e geçildi! Şimdi tekrar Ping butonuna bas.";
                 diagEl.textContent = "";
                 return;
               } catch (netErr) {
@@ -255,6 +254,9 @@
                 return;
               }
             }
+
+            // Artık kesinlikle Base'deyiz, devam edelim
+            const me = await signer.getAddress();
 
             // (Varsa) tek-sefer kontrolü
             try {
@@ -272,9 +274,9 @@
             // Simülasyon — geçmezse göndermiyoruz
             try {
               await contract.callStatic.ping({ from: me });
-            } catch {
-              diagEl.textContent = "Teşhis: Simülasyon revert etti. Olası neden: tek sefer kuralı, onlyOwner/whitelist veya başka koşul.";
-              statusEl.textContent = "Kontrat bu çağrıyı bu hesapla reddediyor.";
+            } catch (simErr) {
+              diagEl.textContent = "Teşhis: Simülasyon revert etti Base ağında. Olası neden: zaten ping attın, onlyOwner, whitelist veya başka koşul. Hata: " + (simErr.message || "bilinmiyor");
+              statusEl.textContent = "Kontrat bu çağrıyı Base'de reddediyor.";
               return;
             }
 
