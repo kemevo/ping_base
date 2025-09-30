@@ -243,27 +243,14 @@
               try {
                 await requireBaseNetworkInteractive();
                 
-                // Ağ değişiminin tamamlanması için kısa bir bekleme
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                // Provider'ı tamamen temizle ve yeniden oluştur
-                provider = null;
-                signer = null;
-                contract = null;
-                
-                provider = new ethers.providers.Web3Provider(window.ethereum, "any");
-                signer = provider.getSigner();
-                contract = new ethers.Contract(currentAddress, ABI, signer);
-                
-                // Ağın gerçekten değiştiğini doğrula
-                const network = await provider.getNetwork();
-                if (network.chainId !== 8453) {
-                  statusEl.textContent = "⚠️ Ağ değişimi tamamlanmadı. Sayfayı yenile ve tekrar dene.";
-                  return;
-                }
-                
-                statusEl.textContent = "✅ Base'e geçildi! Şimdi tekrar Ping butonuna bas.";
+                // Ağ değişti - sayfayı yenile (en güvenilir yöntem)
+                statusEl.textContent = "✅ Base'e geçildi! Sayfa yenileniyor...";
                 diagEl.textContent = "";
+                
+                setTimeout(() => {
+                  location.reload();
+                }, 1000);
+                
                 return;
               } catch (netErr) {
                 statusEl.textContent = netErr.message || "Base ağına geçmeden ping atılamaz.";
