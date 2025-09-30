@@ -212,10 +212,27 @@
         async function ping() {
           try {
             if (!contract || !signer) { statusEl.textContent = "Önce cüzdan bağla."; return; }
-            await ensureBaseNetwork();
+      
+            // 🔹 AĞ KONTROLÜ: Base değilse öneri + otomatik switch
+            if (window.ethereum) {
+              const chainId = await window.ethereum.request({ method: "eth_chainId" });
+              if (chainId !== CHAIN_ID_HEX) {
+                const ok = window.confirm("Şu an Base ağında değilsin. Base Mainnet'e geçelim mi?");
+                if (!ok) {
+                  statusEl.textContent = "Base ağına geçmeden ping atılamaz.";
+                  return;
+                }
+                statusEl.textContent = "Base ağına geçiliyor…";
+                await ensureBaseNetwork();
+                // ağ değişti → kontratı signer ile yeniden bağla
+                contract = new ethers.Contract(currentAddress, ABI, signer);
+                await refreshCounter(); // sayaç güncelle
+              }
+            }
+      
             const me = await signer.getAddress();
       
-            // 1) (Varsa) tek-sefer kapısı
+            // (Varsa) tek-sefer kapısı
             try {
               if (typeof contract.hasPinged === "function") {
                 const already = await contract.hasPinged(me);
@@ -227,32 +244,24 @@
               }
             } catch {}
       
-            // 2) callStatic: simülasyon geçmezse asla gönderme
+            // Simülasyon: geçmezse göndermiyoruz
             try {
               await contract.callStatic.ping({ from: me });
-            } catch (e) {
-              const raw = (e?.error?.message || e?.data?.message || e?.reason || e?.message || "").toLowerCase();
-              if (raw.includes("already") || raw.includes("once")) {
-                statusEl.textContent = "Bu kontratta bu cüzdan için ping'e izin yok (muhtemelen zaten ping attın).";
-              } else if (raw.includes("owner") || raw.includes("onlyowner")) {
-                statusEl.textContent = "Bu kontrat ping için yetki kısıtı uyguluyor.";
-              } else {
-                statusEl.textContent = "Simülasyon başarısız: Kontrat bu çağrıyı reddediyor.";
-              }
+            } catch {
+              statusEl.textContent = "Kontrat bu çağrıyı bu ağda/hesapla reddediyor.";
               return;
             }
       
-            // 3) estimateGas: başarısızsa gönderme (blind fallback yok!)
+            // Gas tahmini: başarısızsa iptal
             let gasLimit;
             try {
               const est = await contract.estimateGas.ping({ from: me });
-              gasLimit = est.mul(120).div(100); // +%20 pay
+              gasLimit = est.mul(120).div(100);
             } catch {
               statusEl.textContent = "Gas tahmini yapılamadı; gönderim iptal edildi.";
               return;
             }
       
-            // 4) Gönderim
             statusEl.textContent = "İşlem gönderiliyor… Cüzdandan onayla.";
             const tx = await contract.ping({ gasLimit });
             txEl.textContent = tx.hash;
@@ -262,16 +271,13 @@
             statusEl.textContent = "Onaylandı! Teşekkürler.";
             await refreshCounter();
             await applyHasPingedGate();
-      
           } catch (e) {
             const msg = (e?.data?.message || e?.message || "").toLowerCase();
-            if (msg.includes("already")) {
+            if (msg.includes("user rejected")) {
+              statusEl.textContent = "İşlem iptal edildi.";
+            } else if (msg.includes("already")) {
               statusEl.textContent = "Bu cüzdan zaten ping attı ✅";
               pingBtn.disabled = true;
-            } else if (msg.includes("user rejected")) {
-              statusEl.textContent = "İşlem iptal edildi.";
-            } else if (msg.includes("call_exception")) {
-              statusEl.textContent = "Kontrat çağrısı revert etti (status=0).";
             } else {
               statusEl.textContent = "İşlem reddedildi/başarısız: " + (e?.data?.message || e?.message || "Bilinmeyen hata");
             }
