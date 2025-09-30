@@ -278,8 +278,13 @@
             try {
               await contract.callStatic.ping({ from: me });
             } catch (simErr) {
-              diagEl.textContent = "Teşhis: Simülasyon revert etti Base ağında. Olası neden: zaten ping attın, onlyOwner, whitelist veya başka koşul. Hata: " + (simErr.message || "bilinmiyor");
-              statusEl.textContent = "Kontrat bu çağrıyı Base'de reddediyor.";
+              const errMsg = simErr.message || "bilinmiyor";
+              diagEl.innerHTML = "⚠️ <strong>Teşhis:</strong> Simülasyon revert etti. Olası nedenler:<br>" +
+                "• Bu cüzdan zaten ping atmış olabilir<br>" +
+                "• Kontrat sadece owner/whitelist için açık olabilir<br>" +
+                "• Kontrat pause durumunda olabilir<br>" +
+                "• Başka bir kontrat dene veya <a href='https://basescan.org/address/" + currentAddress + "' target='_blank'>Basescan'de kontrol et</a>";
+              statusEl.textContent = "❌ Kontrat bu çağrıyı reddediyor.";
               return;
             }
 
