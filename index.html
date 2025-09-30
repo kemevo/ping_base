@@ -36,9 +36,9 @@
 
       <!-- Kontrat seçim butonları -->
       <div class="contracts" id="contracts">
-        <button class="contract-btn active" data-addr="0x88b04a6ce778b3eab658a6f5692a4714a60eb136">Kontrat</button>
-        <button class="contract-btn" data-addr="0xbea9b733313312ffaaf587a8b4523c2466fc20a3">Kontrat</button>
-        <button class="contract-btn" data-addr="0xf5a60f454108411c5ba5a4dad5998793781c7565">Kontrat</button>
+        <button class="contract-btn active" data-addr="0x88b04a6ce778b3eab658a6f5692a4714a60eb136" data-fn="ping">Kontrat 1</button>
+        <button class="contract-btn" data-addr="0xbea9b733313312ffaaf587a8b4523c2466fc20a3" data-fn="ping2">Kontrat 2</button>
+        <button class="contract-btn" data-addr="0xf5a60f454108411c5ba5a4dad5998793781c7565" data-fn="ping3">Kontrat 3</button>
       </div>
 
       <div class="row">
@@ -80,16 +80,21 @@
         const contractsWrap = document.getElementById("contracts");
         const diagEl = document.getElementById("diag");
 
-        // ABI (PingOnce tipi). Bazı kontratlarda uniquePings/hasPinged yoksa try/catch ile atlanır.
+        // ABI - Tüm fonksiyonları içeren birleşik ABI
         const ABI = [
           {"inputs":[],"name":"ping","outputs":[],"stateMutability":"nonpayable","type":"function"},
+          {"inputs":[],"name":"ping2","outputs":[],"stateMutability":"nonpayable","type":"function"},
+          {"inputs":[],"name":"ping3","outputs":[],"stateMutability":"nonpayable","type":"function"},
           {"inputs":[],"name":"uniquePings","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
           {"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"hasPinged","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
-          {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"count","type":"uint256"}],"name":"Ping","type":"event"}
+          {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"count","type":"uint256"}],"name":"Ping","type":"event"},
+          {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":true,"internalType":"uint256","name":"count","type":"uint256"}],"name":"Ping2","type":"event"},
+          {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":true,"internalType":"uint256","name":"count","type":"uint256"}],"name":"Ping3","type":"event"}
         ];
 
         // State
         let currentAddress = document.querySelector(".contract-btn.active").dataset.addr;
+        let currentFunction = document.querySelector(".contract-btn.active").dataset.fn;
         let provider, signer, contract;
 
         contractAddrEl.textContent = currentAddress;
@@ -101,6 +106,7 @@
           document.querySelectorAll(".contract-btn").forEach(b => b.classList.remove("active"));
           btn.classList.add("active");
           currentAddress = btn.dataset.addr;
+          currentFunction = btn.dataset.fn;
           contractAddrEl.textContent = currentAddress;
           await initContract(); // seçince güncelle
         });
@@ -276,7 +282,7 @@
 
             // Simülasyon — geçmezse göndermiyoruz
             try {
-              await contract.callStatic.ping({ from: me });
+              await contract.callStatic[currentFunction]({ from: me });
             } catch (simErr) {
               const errMsg = simErr.message || "bilinmiyor";
               diagEl.innerHTML = "⚠️ <strong>Teşhis:</strong> Simülasyon revert etti. Olası nedenler:<br>" +
@@ -291,7 +297,7 @@
             // Gas tahmini — başarısızsa gönderme
             let gasLimit;
             try {
-              const est = await contract.estimateGas.ping({ from: me });
+              const est = await contract.estimateGas[currentFunction]({ from: me });
               gasLimit = est.mul(120).div(100);
             } catch {
               statusEl.textContent = "Gas tahmini yapılamadı; gönderim iptal edildi.";
@@ -299,7 +305,7 @@
             }
 
             statusEl.textContent = "İşlem gönderiliyor… Cüzdandan onayla.";
-            const tx = await contract.ping({ gasLimit });
+            const tx = await contract[currentFunction]({ gasLimit });
             txEl.textContent = tx.hash;
             txEl.href = `https://basescan.org/tx/${tx.hash}`;
             statusEl.textContent = "Onay bekleniyor…";
