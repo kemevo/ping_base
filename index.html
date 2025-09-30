@@ -3,58 +3,58 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Base Ping (çoklu kontrat)</title>
+    <title>Base Ping (3 butonlu)</title>
     <style>
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#0f172a; color:#fff; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0 }
-      .card { background:rgba(255,255,255,.06); padding:24px; border-radius:16px; width: min(92vw, 560px); box-shadow: 0 15px 40px rgba(0,0,0,.3) }
+      .card { background:rgba(255,255,255,.06); padding:24px; border-radius:16px; width:min(92vw,600px); box-shadow:0 15px 40px rgba(0,0,0,.3) }
       .row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:10px 0; flex-wrap:wrap }
-      .btn { background:rgba(255,255,255,.10); border:none; padding:10px 14px; border-radius:12px; color:#fff; cursor:pointer }
+      .btn { background:rgba(255,255,255,.10); border:none; padding:10px 14px; border-radius:12px; color:#fff; cursor:pointer; transition:all .2s }
       .btn:disabled { opacity:.5; cursor:not-allowed }
+      .btn-ghost { background:rgba(255,255,255,.08) }
+      .btn-outline { background:transparent; border:1px solid rgba(255,255,255,.2) }
+      .btn-active { background:#3b82f6 }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all }
-      small { opacity:.7 }
+      small { opacity:.75 }
       a { color:#a5b4fc }
-      select { background:rgba(255,255,255,.10); color:#fff; border:none; border-radius:10px; padding:8px 10px }
-      label { font-size:12px; opacity:.8 }
-      .muted { opacity:.7 }
+      .contracts { display:flex; gap:8px; flex-wrap:wrap }
+      .contracts .contract-btn { padding:8px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.06); cursor:pointer }
+      .contracts .contract-btn.active { background:#22c55e; border-color:#22c55e; color:#0b1220 }
+      .muted { opacity:.8 }
+      .kpi { display:flex; gap:12px; flex-wrap:wrap }
+      .kpi .pill { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15); border-radius:999px; padding:6px 10px; font-size:12px }
     </style>
-    <!-- Ethers v5 UMD (CDN) -->
+    <!-- Ethers v5 UMD -->
     <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   </head>
   <body>
     <div class="card">
       <h2 style="margin:0 0 6px">Base Ping</h2>
-      <p class="muted" style="margin:0 0 16px">
-        <strong>Ping</strong> butonuna tıkla → cüzdan onayı → seçili kontrattaki <code>ping()</code> çağrılır.
-        Her cüzdan 1 kez (kontratın <code>hasPinged</code> kontrolü varsa).
+      <p class="muted" style="margin:0 0 14px">
+        Aşağıdan kontratı seç → <strong>Cüzdanı Bağla</strong> → <strong>Ping</strong>.
+        Gerekirse ağ otomatik <em>Base Mainnet</em>’e alınır. <small>(Bazı kontratlar sayaç/tek-sefer kontrolünü desteklemeyebilir.)</small>
       </p>
 
+      <!-- Kontrat seçim butonları -->
+      <div class="contracts" id="contracts">
+        <button class="contract-btn active" data-addr="0x88b04a6ce778b3eab658a6f5692a4714a60eb136">Kontrat</button>
+        <button class="contract-btn" data-addr="0xbea9b733313312ffaaf587a8b4523c2466fc20a3">Kontrat</button>
+        <button class="contract-btn" data-addr="0xf5a60f454108411c5ba5a4dad5998793781c7565">Kontrat</button>
+      </div>
+
       <div class="row">
+        <div style="min-width:240px">
+          <div><small>Seçili kontrat</small></div>
+          <div id="contractAddr" class="mono">—</div>
+        </div>
         <div>
-          <div><small>Bağlı cüzdan</small></div>
-          <div id="account" class="mono">—</div>
-        </div>
-        <button id="connect" class="btn">Cüzdanı Bağla</button>
-      </div>
-
-      <div class="row" style="gap:8px">
-        <div style="flex:1 1 240px">
-          <label for="contractSel">Kontrat (Base Mainnet)</label><br/>
-          <select id="contractSel" style="width:100%">
-            <!-- Aşağıdaki 3 adres eklendi -->
-            <option value="0x88b04a6ce778b3eab658a6f5692a4714a60eb136">0x88b0...b136</option>
-            <option value="0xbea9b733313312ffaaf587a8b4523c2466fc20a3">0xbea9...20a3</option>
-            <option value="0xf5a60f454108411c5ba5a4dad5998793781c7565">0xf5a6...7565</option>
-          </select>
-        </div>
-        <div style="flex:1 1 240px">
-          <div><small>Seçili kontrat adresi</small></div>
-          <div id="contractAddr" class="mono"></div>
+          <button id="connect" class="btn btn-outline">Cüzdanı Bağla</button>
+          <button id="ping" class="btn btn-ghost" disabled>Ping</button>
         </div>
       </div>
 
-      <div class="row">
-        <button id="ping" class="btn" disabled>Ping</button>
-        <div><small id="counter">—</small></div>
+      <div class="row kpi">
+        <div class="pill"><small>Bağlı cüzdan: </small><span id="account" class="mono">—</span></div>
+        <div class="pill"><small>Sayım: </small><span id="counter">—</span></div>
       </div>
 
       <div style="margin-top:8px">
@@ -63,33 +63,22 @@
       </div>
     </div>
 
-    <script type="text/javascript">
+    <script>
       (function() {
-        const CHAIN_ID_HEX = "0x2105"; // 8453 Base Mainnet
+        const CHAIN_ID_HEX = "0x2105"; // Base Mainnet 8453
         const RPC_URL = "https://mainnet.base.org";
 
         // DOM
-        const accountEl = document.getElementById("account");
         const statusEl = document.getElementById("status");
-        const txEl = document.getElementById("tx");
+        const accountEl = document.getElementById("account");
         const counterEl = document.getElementById("counter");
+        const txEl = document.getElementById("tx");
         const connectBtn = document.getElementById("connect");
         const pingBtn = document.getElementById("ping");
         const contractAddrEl = document.getElementById("contractAddr");
-        const contractSel = document.getElementById("contractSel");
+        const contractsWrap = document.getElementById("contracts");
 
-        // Çoklu kontrat desteği
-        function currentContractAddress() {
-          return contractSel.value;
-        }
-        contractAddrEl.textContent = currentContractAddress();
-        contractSel.addEventListener("change", async () => {
-          contractAddrEl.textContent = currentContractAddress();
-          await initContract(); // kontrat değişince yeniden bağlan
-        });
-
-        // PingOnce ABI (uniquePings/hasPinged/Ping). Bazı kontratlar bu fonksiyonları içermiyorsa
-        // çağrıları try/catch ile sarıyoruz ve özellikleri gizliyoruz.
+        // ABI (PingOnce tipi). Bazı kontratlarda uniquePings/hasPinged yoksa try/catch ile atlanır.
         const ABI = [
           {"inputs":[],"name":"ping","outputs":[],"stateMutability":"nonpayable","type":"function"},
           {"inputs":[],"name":"uniquePings","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
@@ -97,7 +86,22 @@
           {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"count","type":"uint256"}],"name":"Ping","type":"event"}
         ];
 
+        // State
+        let currentAddress = document.querySelector(".contract-btn.active").dataset.addr;
         let provider, signer, contract;
+
+        contractAddrEl.textContent = currentAddress;
+
+        // Kontrat butonları tıklama
+        contractsWrap.addEventListener("click", async (e) => {
+          const btn = e.target.closest(".contract-btn");
+          if (!btn) return;
+          document.querySelectorAll(".contract-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          currentAddress = btn.dataset.addr;
+          contractAddrEl.textContent = currentAddress;
+          await initContract(); // seçince güncelle
+        });
 
         async function ensureBaseNetwork() {
           const eth = window.ethereum;
@@ -111,7 +115,6 @@
               });
             } catch (err) {
               if (err.code === 4902) {
-                // Ağ yüklü değilse ekle
                 await eth.request({
                   method: "wallet_addEthereumChain",
                   params: [{
@@ -132,31 +135,30 @@
         async function initContract() {
           try {
             if (!provider) {
-              // read-only sayacı gösterebilmek için provider yoksa RPC üzerinden bağlan
+              // read-only sayaç için public provider
               const rp = new ethers.providers.JsonRpcProvider(RPC_URL);
-              contract = new ethers.Contract(currentContractAddress(), ABI, rp);
+              contract = new ethers.Contract(currentAddress, ABI, rp);
               await refreshCounter(true);
               pingBtn.disabled = true;
               return;
             }
             await ensureBaseNetwork();
-            contract = new ethers.Contract(currentContractAddress(), ABI, signer);
+            contract = new ethers.Contract(currentAddress, ABI, signer);
             await refreshCounter();
             await applyHasPingedGate();
             pingBtn.disabled = false;
           } catch (e) {
-            // ABI uymuyorsa sayacı/kapıları sakla ama ping deneyine izin ver
             console.warn("initContract uyarı:", e);
             counterEl.textContent = "—";
-            pingBtn.disabled = false;
-            statusEl.textContent = "Bağlandı (sayaç/hasPinged desteklenmiyor olabilir).";
+            pingBtn.disabled = false; // en az ping'e izin ver
+            statusEl.textContent = "Bağlandı (sayaç/hasPinged desteklenmeyebilir).";
           }
         }
 
         async function applyHasPingedGate() {
           try {
             const me = await signer.getAddress();
-            if (typeof contract.hasPinged !== "function") return; // bu fonksiyon yoksa geç
+            if (typeof contract.hasPinged !== "function") return;
             const already = await contract.hasPinged(me);
             if (already) {
               pingBtn.disabled = true;
@@ -165,8 +167,25 @@
               pingBtn.disabled = false;
               statusEl.textContent = "Bağlandı. Ping atabilirsin.";
             }
-          } catch {
-            // hasPinged yoksa sessiz geç
+          } catch {/* sessiz */}
+        }
+
+        async function refreshCounter(readOnlyOnly=false) {
+          try {
+            if (typeof contract.uniquePings !== "function") { counterEl.textContent = "—"; return; }
+            const v = await contract.uniquePings();
+            counterEl.textContent = v.toString() + " unique pings";
+          } catch (e) {
+            if (!readOnlyOnly) {
+              try {
+                const rp = new ethers.providers.JsonRpcProvider(RPC_URL);
+                const rc = new ethers.Contract(currentAddress, ABI, rp);
+                const v = await rc.uniquePings();
+                counterEl.textContent = v.toString() + " unique pings";
+              } catch { counterEl.textContent = "—"; }
+            } else {
+              counterEl.textContent = "—";
+            }
           }
         }
 
@@ -183,7 +202,6 @@
 
           await initContract();
 
-          // ağ/hesap değişimlerini dinle
           if (window.ethereum && !window.__basePingBound) {
             window.__basePingBound = true;
             window.ethereum.on("accountsChanged", () => connect());
@@ -191,47 +209,18 @@
           }
         }
 
-        async function refreshCounter(readOnlyIfNeeded = false) {
-          try {
-            if (typeof contract.uniquePings !== "function") {
-              counterEl.textContent = "—";
-              return;
-            }
-            const v = await contract.uniquePings();
-            counterEl.textContent = v.toString() + " unique pings";
-          } catch (e) {
-            if (!readOnlyIfNeeded) {
-              // write provider ile okunamadıysa read-only dene
-              try {
-                const rp = new ethers.providers.JsonRpcProvider(RPC_URL);
-                const rc = new ethers.Contract(currentContractAddress(), ABI, rp);
-                const v = await rc.uniquePings();
-                counterEl.textContent = v.toString() + " unique pings";
-              } catch {
-                counterEl.textContent = "—";
-              }
-            } else {
-              counterEl.textContent = "—";
-            }
-          }
-        }
-
         async function ping() {
           try {
-            if (!contract || !signer) {
-              statusEl.textContent = "Önce cüzdan bağla.";
-              return;
-            }
-            await ensureBaseNetwork(); // yazmadan önce son kontrol
+            if (!contract || !signer) { statusEl.textContent = "Önce cüzdan bağla."; return; }
+            await ensureBaseNetwork();
             statusEl.textContent = "İşlem gönderiliyor… Cüzdandan onayla.";
-            const tx = await contract.ping(); // sadece ping
+            const tx = await contract.ping();
             txEl.textContent = tx.hash;
             txEl.href = `https://basescan.org/tx/${tx.hash}`;
             statusEl.textContent = "Onay bekleniyor…";
             await tx.wait();
             statusEl.textContent = "Onaylandı! Teşekkürler.";
             await refreshCounter();
-            // ping sonrası tekrar kapı
             await applyHasPingedGate();
           } catch (e) {
             const msg = (e?.data?.message || e?.message || "").toLowerCase();
@@ -240,26 +229,27 @@
               pingBtn.disabled = true;
             } else if (msg.includes("user rejected")) {
               statusEl.textContent = "İşlem iptal edildi.";
+            } else if (msg.includes("chain disconnected")) {
+              statusEl.textContent = "Ağ bağlantısı kesildi. Yenileyip tekrar dene.";
             } else {
               statusEl.textContent = "İşlem reddedildi/başarısız: " + (e?.data?.message || e?.message || "Bilinmeyen hata");
             }
           }
         }
 
+        // Events
         connectBtn.addEventListener("click", connect);
         pingBtn.addEventListener("click", ping);
 
-        // Sayfa açılışında seçili kontrat adresini göster ve read-only sayaç dene
+        // İlk yüklemede seçili kontrat adresini ve sayaçı dene
         (async () => {
+          contractAddrEl.textContent = currentAddress;
           try {
             const rp = new ethers.providers.JsonRpcProvider(RPC_URL);
-            const rc = new ethers.Contract(currentContractAddress(), ABI, rp);
+            const rc = new ethers.Contract(currentAddress, ABI, rp);
             const v = await rc.uniquePings().catch(()=>null);
-            contractAddrEl.textContent = currentContractAddress();
             if (v !== null) counterEl.textContent = v.toString() + " unique pings";
-          } catch {
-            /* ignore */
-          }
+          } catch {}
         })();
       })();
     </script>
