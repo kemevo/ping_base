@@ -22,7 +22,6 @@
       .kpi { display:flex; gap:12px; flex-wrap:wrap }
       .kpi .pill { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15); border-radius:999px; padding:6px 10px; font-size:12px }
       #diag { font-size:12px; opacity:.8; margin-top:6px }
-      label { font-size:12px; opacity:.85 }
     </style>
     <!-- Ethers v5 UMD -->
     <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
@@ -31,7 +30,7 @@
     <div class="card">
       <h2 style="margin:0 0 6px">Base Ping</h2>
       <p class="muted" style="margin:0 0 14px">
-        Aşağıdan kontratı seç → <strong>Cüzdanı Bağla</strong> → <strong>Ping</strong>. Gerekirse ağ otomatik <em>Base Mainnet</em>’e alınır.
+        Aşağıdan kontratı seç → <strong>Cüzdanı Bağla</strong> → <strong>Ping</strong>. Gerekirse ağ otomatik <em>Base Mainnet</em>'e alınır.
         <small>(Bazı kontratlar sayaç/tek-sefer kontrolünü desteklemeyebilir.)</small>
       </p>
 
@@ -61,10 +60,7 @@
       <div style="margin-top:8px">
         <small>Durum: <span id="status">Hazır</span></small><br/>
         <small>Tx: <a id="tx" href="#" target="_blank" rel="noreferrer">—</a></small>
-        <div style="margin:8px 0 0">
-          <label><input type="checkbox" id="forceSend" /> Gelişmiş: Simülasyon başarısızsa bile gönder (riskli)</label>
-          <div id="diag"></div>
-        </div>
+        <div id="diag"></div>
       </div>
     </div>
 
@@ -236,18 +232,26 @@
           try {
             if (!contract || !signer) { statusEl.textContent = "Önce cüzdan bağla."; return; }
 
-            // Ping'ten hemen önce Base doğrulaması + geçiş teklifi
-            try {
-              await requireBaseNetworkInteractive();
-              // zincir değişmiş olabileceği için kontratı yeniden signer ile bağla
-              contract = new ethers.Contract(currentAddress, ABI, signer);
-            } catch (e) {
-              statusEl.textContent = e.message || "Base ağına geçmeden ping atılamaz.";
-              return;
+            // Ping'ten hemen önce ağ kontrolü - ETH ağındaysa Base'e geç
+            const currentChain = await window.ethereum.request({ method: "eth_chainId" });
+            if (currentChain !== CHAIN_ID_HEX) {
+              diagEl.textContent = "Teşhis: Yanlış ağdasın (Ethereum Mainnet veya başka ağ). Base Mainnet'e geçmen gerekiyor.";
+              statusEl.textContent = "❌ Yanlış ağdasın! Base Mainnet'e geçelim mi?";
+              
+              try {
+                await requireBaseNetworkInteractive();
+                // Ağ değişti, kontratı yeniden bağla
+                contract = new ethers.Contract(currentAddress, ABI, signer);
+                statusEl.textContent = "✅ Base'e geçildi. Şimdi tekrar ping atabilirsin.";
+                diagEl.textContent = "";
+                return;
+              } catch (netErr) {
+                statusEl.textContent = netErr.message || "Base ağına geçmeden ping atılamaz.";
+                return;
+              }
             }
 
             const me = await signer.getAddress();
-            const force = document.getElementById("forceSend")?.checked;
             diagEl.textContent = "";
 
             // (Varsa) tek-sefer kontrolü
@@ -263,54 +267,26 @@
               }
             } catch {}
 
-            // Simülasyon — geçmezse göndermiyoruz (force hariç)
-            let simOk = true;
+            // Simülasyon — geçmezse göndermiyoruz
             try {
               await contract.callStatic.ping({ from: me });
-            } catch (simErr) {
-              simOk = false;
-              
-              // Önce ağ kontrolü yap - belki yanlış ağdadır
-              const currentChain = await window.ethereum.request({ method: "eth_chainId" });
-              if (currentChain !== CHAIN_ID_HEX) {
-                diagEl.textContent = "Teşhis: Yanlış ağdasın (ETH veya başka). Base Mainnet'e geçmen gerekiyor.";
-                statusEl.textContent = "Yanlış ağdasın! Base'e geçmek ister misin?";
-                
-                try {
-                  await requireBaseNetworkInteractive();
-                  // Ağ değişti, kontratı yeniden bağla ve ping'i tekrar dene
-                  contract = new ethers.Contract(currentAddress, ABI, signer);
-                  statusEl.textContent = "Base'e geçildi. Şimdi tekrar ping atabilirsin.";
-                  diagEl.textContent = "";
-                  return;
-                } catch (netErr) {
-                  statusEl.textContent = netErr.message || "Base ağına geçmeden ping atılamaz.";
-                  return;
-                }
-              }
-              
-              // Base'deyse ama yine de revert ediyorsa
+            } catch {
               diagEl.textContent = "Teşhis: Simülasyon revert etti. Olası neden: tek sefer kuralı, onlyOwner/whitelist veya başka koşul.";
-              if (!force) {
-                statusEl.textContent = "Kontrat bu çağrıyı bu hesapla reddediyor.";
-                return;
-              }
+              statusEl.textContent = "Kontrat bu çağrıyı bu hesapla reddediyor.";
+              return;
             }
 
-            // Gas tahmini — başarısızsa gönderme (force hariç)
+            // Gas tahmini — başarısızsa gönderme
             let gasLimit;
             try {
               const est = await contract.estimateGas.ping({ from: me });
               gasLimit = est.mul(120).div(100);
             } catch {
-              if (!force) {
-                statusEl.textContent = "Gas tahmini yapılamadı; gönderim iptal edildi.";
-                return;
-              }
-              gasLimit = ethers.BigNumber.from(120000); // riskli fallback
+              statusEl.textContent = "Gas tahmini yapılamadı; gönderim iptal edildi.";
+              return;
             }
 
-            statusEl.textContent = simOk ? "İşlem gönderiliyor… Cüzdandan onayla." : "Uyarı: Simülasyon başarısızdı, yine de gönderiliyor…";
+            statusEl.textContent = "İşlem gönderiliyor… Cüzdandan onayla.";
             const tx = await contract.ping({ gasLimit });
             txEl.textContent = tx.hash;
             txEl.href = `https://basescan.org/tx/${tx.hash}`;
@@ -319,7 +295,7 @@
             if (rcpt.status === 1) {
               statusEl.textContent = "Onaylandı! Teşekkürler.";
             } else {
-              statusEl.textContent = "Tx mine edildi ama revert etti (status=0).";
+              statusEl.textContent = "Tx madencilenmiş ama revert etti (status=0).";
             }
             await refreshCounter();
             await applyHasPingedGate();
