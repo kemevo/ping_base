@@ -232,7 +232,10 @@
           try {
             if (!contract || !signer) { statusEl.textContent = "Önce cüzdan bağla."; return; }
 
-            // Ping'ten hemen önce ağ kontrolü - ETH ağındaysa Base'e geç
+            const me = await signer.getAddress();
+            diagEl.textContent = "";
+
+            // ÖNCE ağ kontrolü yap - yoksa simülasyon yanlış ağda çalışır
             const currentChain = await window.ethereum.request({ method: "eth_chainId" });
             if (currentChain !== CHAIN_ID_HEX) {
               diagEl.textContent = "Teşhis: Yanlış ağdasın (Ethereum Mainnet veya başka ağ). Base Mainnet'e geçmen gerekiyor.";
@@ -240,7 +243,9 @@
               
               try {
                 await requireBaseNetworkInteractive();
-                // Ağ değişti, kontratı yeniden bağla
+                // Ağ değişti, provider ve signer'ı yeniden oluştur
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                signer = provider.getSigner();
                 contract = new ethers.Contract(currentAddress, ABI, signer);
                 statusEl.textContent = "✅ Base'e geçildi. Şimdi tekrar ping atabilirsin.";
                 diagEl.textContent = "";
@@ -250,9 +255,6 @@
                 return;
               }
             }
-
-            const me = await signer.getAddress();
-            diagEl.textContent = "";
 
             // (Varsa) tek-sefer kontrolü
             try {
