@@ -10,9 +10,8 @@
       .row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:10px 0; flex-wrap:wrap }
       .btn { background:rgba(255,255,255,.10); border:none; padding:10px 14px; border-radius:12px; color:#fff; cursor:pointer; transition:all .2s }
       .btn:disabled { opacity:.5; cursor:not-allowed }
-      .btn-ghost { background:rgba(255,255,255,.08) }
       .btn-outline { background:transparent; border:1px solid rgba(255,255,255,.2) }
-      .btn-active { background:#3b82f6 }
+      .btn-ghost { background:rgba(255,255,255,.08) }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all }
       small { opacity:.75 }
       a { color:#a5b4fc }
@@ -22,6 +21,8 @@
       .muted { opacity:.8 }
       .kpi { display:flex; gap:12px; flex-wrap:wrap }
       .kpi .pill { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15); border-radius:999px; padding:6px 10px; font-size:12px }
+      #diag { font-size:12px; opacity:.8; margin-top:6px }
+      label { font-size:12px; opacity:.85 }
     </style>
     <!-- Ethers v5 UMD -->
     <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
@@ -30,8 +31,8 @@
     <div class="card">
       <h2 style="margin:0 0 6px">Base Ping</h2>
       <p class="muted" style="margin:0 0 14px">
-        Aşağıdan kontratı seç → <strong>Cüzdanı Bağla</strong> → <strong>Ping</strong>.
-        Gerekirse ağ otomatik <em>Base Mainnet</em>’e alınır. <small>(Bazı kontratlar sayaç/tek-sefer kontrolünü desteklemeyebilir.)</small>
+        Aşağıdan kontratı seç → <strong>Cüzdanı Bağla</strong> → <strong>Ping</strong>. Gerekirse ağ otomatik <em>Base Mainnet</em>’e alınır.
+        <small>(Bazı kontratlar sayaç/tek-sefer kontrolünü desteklemeyebilir.)</small>
       </p>
 
       <!-- Kontrat seçim butonları -->
@@ -60,6 +61,10 @@
       <div style="margin-top:8px">
         <small>Durum: <span id="status">Hazır</span></small><br/>
         <small>Tx: <a id="tx" href="#" target="_blank" rel="noreferrer">—</a></small>
+        <div style="margin:8px 0 0">
+          <label><input type="checkbox" id="forceSend" /> Gelişmiş: Simülasyon başarısızsa bile gönder (riskli)</label>
+          <div id="diag"></div>
+        </div>
       </div>
     </div>
 
@@ -77,6 +82,7 @@
         const pingBtn = document.getElementById("ping");
         const contractAddrEl = document.getElementById("contractAddr");
         const contractsWrap = document.getElementById("contracts");
+        const diagEl = document.getElementById("diag");
 
         // ABI (PingOnce tipi). Bazı kontratlarda uniquePings/hasPinged yoksa try/catch ile atlanır.
         const ABI = [
@@ -103,31 +109,34 @@
           await initContract(); // seçince güncelle
         });
 
-        async function ensureBaseNetwork() {
-          const eth = window.ethereum;
-          if (!eth) throw new Error("Cüzdan bulunamadı");
-          const chainId = await eth.request({ method: "eth_chainId" });
-          if (chainId !== CHAIN_ID_HEX) {
-            try {
-              await eth.request({
-                method: "wallet_switchEthereumChain",
-                params: [{ chainId: CHAIN_ID_HEX }],
+        // Ağ zorunluluğu: Base değilse kullanıcı onayıyla geçiş yap
+        async function requireBaseNetworkInteractive() {
+          if (!window.ethereum) throw new Error("Cüzdan bulunamadı");
+          const cur = await window.ethereum.request({ method: "eth_chainId" });
+          if (cur === CHAIN_ID_HEX) return;
+
+          const ok = window.confirm("Şu an Base ağında değilsin. Base Mainnet'e geçelim mi?");
+          if (!ok) throw new Error("Base ağına geçmeden işlem yapılamaz.");
+
+          try {
+            await window.ethereum.request({
+              method: "wallet_switchEthereumChain",
+              params: [{ chainId: CHAIN_ID_HEX }],
+            });
+          } catch (err) {
+            if (err.code === 4902) {
+              await window.ethereum.request({
+                method: "wallet_addEthereumChain",
+                params: [{
+                  chainId: CHAIN_ID_HEX,
+                  chainName: "Base Mainnet",
+                  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+                  rpcUrls: [RPC_URL],
+                  blockExplorerUrls: ["https://basescan.org/"],
+                }],
               });
-            } catch (err) {
-              if (err.code === 4902) {
-                await eth.request({
-                  method: "wallet_addEthereumChain",
-                  params: [{
-                    chainId: CHAIN_ID_HEX,
-                    chainName: "Base Mainnet",
-                    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-                    rpcUrls: [RPC_URL],
-                    blockExplorerUrls: ["https://basescan.org/"],
-                  }],
-                });
-              } else {
-                throw err;
-              }
+            } else {
+              throw err;
             }
           }
         }
@@ -142,7 +151,7 @@
               pingBtn.disabled = true;
               return;
             }
-            await ensureBaseNetwork();
+            // provider varsa ama yanlış ağdaysa bağlantı sırasında düzelteceğiz
             contract = new ethers.Contract(currentAddress, ABI, signer);
             await refreshCounter();
             await applyHasPingedGate();
@@ -200,7 +209,21 @@
           provider = new ethers.providers.Web3Provider(window.ethereum);
           signer = provider.getSigner();
 
-          await initContract();
+          // Bağlanır bağlanmaz Base'e geçişi öner + uygula
+          try {
+            await requireBaseNetworkInteractive();
+          } catch (e) {
+            statusEl.textContent = e.message || "Base ağına geçmeden işlem yapılamaz.";
+            pingBtn.disabled = true;
+            return;
+          }
+
+          // ağ Base ise kontratı signer ile bağla ve UI'ı güncelle
+          contract = new ethers.Contract(currentAddress, ABI, signer);
+          await refreshCounter();
+          await applyHasPingedGate();
+          pingBtn.disabled = false;
+          statusEl.textContent = "Bağlandı.";
 
           if (window.ethereum && !window.__basePingBound) {
             window.__basePingBound = true;
@@ -212,65 +235,74 @@
         async function ping() {
           try {
             if (!contract || !signer) { statusEl.textContent = "Önce cüzdan bağla."; return; }
-      
-            // 🔹 AĞ KONTROLÜ: Base değilse öneri + otomatik switch
-            if (window.ethereum) {
-              const chainId = await window.ethereum.request({ method: "eth_chainId" });
-              if (chainId !== CHAIN_ID_HEX) {
-                const ok = window.confirm("Şu an Base ağında değilsin. Base Mainnet'e geçelim mi?");
-                if (!ok) {
-                  statusEl.textContent = "Base ağına geçmeden ping atılamaz.";
-                  return;
-                }
-                statusEl.textContent = "Base ağına geçiliyor…";
-                await ensureBaseNetwork();
-                // ağ değişti → kontratı signer ile yeniden bağla
-                contract = new ethers.Contract(currentAddress, ABI, signer);
-                await refreshCounter(); // sayaç güncelle
-              }
+
+            // Ping'ten hemen önce Base doğrulaması + geçiş teklifi
+            try {
+              await requireBaseNetworkInteractive();
+              // zincir değişmiş olabileceği için kontratı yeniden signer ile bağla
+              contract = new ethers.Contract(currentAddress, ABI, signer);
+            } catch (e) {
+              statusEl.textContent = e.message || "Base ağına geçmeden ping atılamaz.";
+              return;
             }
-      
+
             const me = await signer.getAddress();
-      
-            // (Varsa) tek-sefer kapısı
+            const force = document.getElementById("forceSend")?.checked;
+            diagEl.textContent = "";
+
+            // (Varsa) tek-sefer kontrolü
             try {
               if (typeof contract.hasPinged === "function") {
                 const already = await contract.hasPinged(me);
                 if (already) {
                   pingBtn.disabled = true;
                   statusEl.textContent = "Bu cüzdan zaten ping attı ✅";
+                  diagEl.textContent = "Teşhis: hasPinged=true → tek seferlik kural.";
                   return;
                 }
               }
             } catch {}
-      
-            // Simülasyon: geçmezse göndermiyoruz
+
+            // Simülasyon — geçmezse göndermiyoruz (force hariç)
+            let simOk = true;
             try {
               await contract.callStatic.ping({ from: me });
             } catch {
-              statusEl.textContent = "Kontrat bu çağrıyı bu ağda/hesapla reddediyor.";
-              return;
+              simOk = false;
+              diagEl.textContent = "Teşhis: Simülasyon revert etti. Olası neden: tek sefer kuralı, onlyOwner/whitelist veya başka koşul.";
+              if (!force) {
+                statusEl.textContent = "Kontrat bu çağrıyı bu hesapla reddediyor.";
+                return;
+              }
             }
-      
-            // Gas tahmini: başarısızsa iptal
+
+            // Gas tahmini — başarısızsa gönderme (force hariç)
             let gasLimit;
             try {
               const est = await contract.estimateGas.ping({ from: me });
               gasLimit = est.mul(120).div(100);
             } catch {
-              statusEl.textContent = "Gas tahmini yapılamadı; gönderim iptal edildi.";
-              return;
+              if (!force) {
+                statusEl.textContent = "Gas tahmini yapılamadı; gönderim iptal edildi.";
+                return;
+              }
+              gasLimit = ethers.BigNumber.from(120000); // riskli fallback
             }
-      
-            statusEl.textContent = "İşlem gönderiliyor… Cüzdandan onayla.";
+
+            statusEl.textContent = simOk ? "İşlem gönderiliyor… Cüzdandan onayla." : "Uyarı: Simülasyon başarısızdı, yine de gönderiliyor…";
             const tx = await contract.ping({ gasLimit });
             txEl.textContent = tx.hash;
             txEl.href = `https://basescan.org/tx/${tx.hash}`;
             statusEl.textContent = "Onay bekleniyor…";
-            await tx.wait();
-            statusEl.textContent = "Onaylandı! Teşekkürler.";
+            const rcpt = await tx.wait();
+            if (rcpt.status === 1) {
+              statusEl.textContent = "Onaylandı! Teşekkürler.";
+            } else {
+              statusEl.textContent = "Tx mine edildi ama revert etti (status=0).";
+            }
             await refreshCounter();
             await applyHasPingedGate();
+
           } catch (e) {
             const msg = (e?.data?.message || e?.message || "").toLowerCase();
             if (msg.includes("user rejected")) {
@@ -278,12 +310,14 @@
             } else if (msg.includes("already")) {
               statusEl.textContent = "Bu cüzdan zaten ping attı ✅";
               pingBtn.disabled = true;
+            } else if (msg.includes("chain disconnected")) {
+              statusEl.textContent = "Ağ bağlantısı kesildi. Yenileyip tekrar dene.";
             } else {
               statusEl.textContent = "İşlem reddedildi/başarısız: " + (e?.data?.message || e?.message || "Bilinmeyen hata");
             }
           }
         }
-        
+
         // Events
         connectBtn.addEventListener("click", connect);
         pingBtn.addEventListener("click", ping);
